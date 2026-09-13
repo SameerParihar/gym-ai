@@ -45,22 +45,27 @@ export default function Home() {
   if (!isLoading && user) {
     return <Navigate to="/profile" replace />;
   }
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 overflow-hidden">
         {/* Background gradient */}
         <div className="absolute inset-0 bg-gradient-to-b from-[var(--color-accent)]/5 via-transparent to-transparent" />
+
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-[var(--color-accent)]/10 rounded-full blur-3xl" />
 
         <div className="relative max-w-6xl mx-auto text-center">
+          {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[var(--color-card)] border border-[var(--color-border)] mb-8">
             <Zap className="w-4 h-4 text-[var(--color-accent)]" />
+
             <span className="text-sm text-[var(--color-muted)]">
               AI-powered training plans
             </span>
           </div>
 
+          {/* Heading */}
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
             Your Perfect
             <br />
@@ -68,18 +73,23 @@ export default function Home() {
             Seconds
           </h1>
 
+          {/* Description */}
           <p className="text-xl text-[var(--color-muted)] max-w-2xl mx-auto mb-10">
             Stop guessing. Get a personalized training program built by AI,
             tailored to your goals, experience, and schedule.
           </p>
 
+          {/* Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link to="/onboarding">
+            {/* Sign Up */}
+            <Link to="/auth/sign-up">
               <Button size="lg" className="gap-2">
                 Get Started Free
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
+
+            {/* Sign In */}
             <Link to="/onboarding">
               <Button variant="secondary" size="lg">
                 Sign In
@@ -92,14 +102,19 @@ export default function Home() {
       {/* Features Section */}
       <section className="py-20 px-6">
         <div className="max-w-6xl mx-auto">
+          {/* Section Heading */}
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Why GymAI?</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Why GymAI?
+            </h2>
+
             <p className="text-[var(--color-muted)] text-lg max-w-2xl mx-auto">
               We combine fitness expertise with AI to create programs that
               actually work for you.
             </p>
           </div>
 
+          {/* Features */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature) => (
               <Card
@@ -107,10 +122,17 @@ export default function Home() {
                 variant="bordered"
                 className="group hover:border-[var(--color-accent)]/50 transition-colors"
               >
+                {/* Icon */}
                 <div className="w-12 h-12 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center mb-4 group-hover:bg-[var(--color-accent)]/20 transition-colors">
                   <feature.icon className="w-6 h-6 text-[var(--color-accent)]" />
                 </div>
-                <h3 className="font-semibold text-lg mb-2">{feature.title}</h3>
+
+                {/* Title */}
+                <h3 className="font-semibold text-lg mb-2">
+                  {feature.title}
+                </h3>
+
+                {/* Description */}
                 <p className="text-[var(--color-muted)] text-sm">
                   {feature.description}
                 </p>

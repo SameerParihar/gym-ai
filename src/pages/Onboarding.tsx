@@ -107,6 +107,11 @@ export default function Onboarding() {
           {/* Step 1: Questionnaire */}
           {!isGenerating ? (
             <Card variant="bordered">
+              {error && (
+                <div className="mb-4 p-3 rounded-md bg-red-100 text-red-700">
+                  {error}
+                </div>
+              )}
               <h1 className="text-2xl font-bold mb-2">
                 Tell Us About Yourself
               </h1>
