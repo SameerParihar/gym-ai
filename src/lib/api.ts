@@ -1,39 +1,61 @@
 import type { UserProfile } from "../types";
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+const BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 async function post(path: string, body: object) {
   const res = await fetch(`${BASE_URL}/api${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
 
-  if (!res.ok)
-    throw new Error(
-      (await res.json().catch(() => ({}))).error || "Request failed",
-    );
+  const data = await res.json().catch(() => ({}));
 
-  return res.json();
+  if (!res.ok) {
+    throw new Error(
+      data.details ||
+        data.error ||
+        `Request failed with status ${res.status}`,
+    );
+  }
+
+  return data;
 }
 
 async function get(path: string) {
   const res = await fetch(`${BASE_URL}/api${path}`);
-  if (!res.ok)
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
     throw new Error(
-      (await res.json().catch(() => ({}))).error || "Request failed",
+      data.details ||
+        data.error ||
+        `Request failed with status ${res.status}`,
     );
-  return res.json();
+  }
+
+  return data;
 }
+
 export const api = {
   saveProfile: (
     userId: string,
     profile: Omit<UserProfile, "userId" | "updatedAt">,
   ) => {
-    return post("/profile", { userId, ...profile });
+    return post("/profile", {
+      userId,
+      ...profile,
+    });
   },
 
   generatePlan: (userId: string) => {
-    return post("/plan/generate", { userId });
+    return post("/plan/generate", {
+      userId,
+    });
   },
 
   getCurrentPlan: (userId: string) => {

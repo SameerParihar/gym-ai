@@ -7,7 +7,6 @@ dotenv.config();
 export async function generateTrainingPlan(
   profile: UserProfile | Record<string, any>,
 ): Promise<Omit<TrainingPlan, "id" | "userId" | "version" | "createdAt">> {
-  // Normalize profile data
   const normalizedProfile: UserProfile = {
     goal: profile.goal || "bulk",
     experience: profile.experience || "intermediate",
@@ -27,54 +26,82 @@ export async function generateTrainingPlan(
   const openai = new OpenAI({
     apiKey,
     baseURL: "https://openrouter.ai/api/v1",
+
+    // Keep these values simple ASCII strings.
+    // This avoids the ByteString error you previously had on Vercel.
     defaultHeaders: {
-      "HTTP-Referer": process.env.BASE_URL || "http://localhost:3001",
+      "HTTP-Referer": "https://gym-ai-beige.vercel.app",
       "X-Title": "GymAI Plan Generator",
     },
   });
 
-  // Build the prompt
   const prompt = buildPrompt(normalizedProfile);
 
   try {
-    const completion = await openai.chat.completions.create({
-      // Changed from embedding model to chat/reasoning model
-      model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    console.log("[AI] Starting OpenRouter request...");
 
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert fitness trainer and program designer. You must respond with valid JSON only. Do not include markdown, code fences, explanations, reasoning, or any additional text outside the JSON object.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+    const completion = await openai.chat.completions.create(
+      {
+        // OpenRouter automatically selects an available
+        // free model that supports chat completion.
+        model: "openrouter/free",
 
-      temperature: 0.7,
-    });
+        messages: [
+          {
+            role: "system",
+            content:
+  "You are an expert fitness trainer and program designer. " +
+  "Return ONLY a valid JSON object matching the requested schema. " +
+  "Do not use markdown. Do not use code fences. " +
+  "Do not write explanations before or after the JSON. " +
+  "The first character of your response must be { " +
+  "and the last character must be }.",
+          },
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
 
-    const content = completion.choices[0]?.message?.content;
+        temperature: 0.7,
+      },
+      {
+        // Prevent the request from hanging indefinitely.
+        timeout: 60000,
+      },
+    );
+
+    console.log("[AI] OpenRouter request completed");
+
+    console.log(
+      "[AI] OpenRouter response:",
+      JSON.stringify(completion, null, 2),
+    );
+
+    // Safely access choices.
+    // Previously completion.choices[0] caused:
+    // "Cannot read properties of undefined (reading '0')"
+    const content = completion?.choices?.[0]?.message?.content;
 
     if (!content) {
-      console.error(
-        "[AI] No content in response:",
-        JSON.stringify(completion, null, 2),
-      );
+      console.error("[AI] No usable content in OpenRouter response");
 
-      throw new Error("No content in AI response");
+      throw new Error(
+        `AI returned no usable content. Response: ${JSON.stringify(
+          completion,
+        )}`,
+      );
     }
 
     console.log("[AI] Response received successfully");
 
-    let planData;
+    let planData: any;
 
     try {
-      planData = JSON.parse(content);
-    } catch (parseError) {
+      planData = parseAIJson(content);
+    } catch (error) {
       console.error("[AI] Failed to parse AI response as JSON:");
+      console.error("[AI] Raw response:");
       console.error(content);
 
       throw new Error("AI returned invalid JSON");
@@ -87,172 +114,178 @@ export async function generateTrainingPlan(
   }
 }
 
-function formatPlanResponse(
-  aiResponse: any,
-  profile: UserProfile,
-): Omit<TrainingPlan, "id" | "userId" | "version" | "createdAt"> {
-  const plan: Omit<
-    TrainingPlan,
-    "id" | "userId" | "version" | "createdAt"
-  > = {
-    overview: {
-      goal:
-        aiResponse.overview?.goal ||
-        `Customized ${profile.goal} program`,
-
-      frequency:
-        aiResponse.overview?.frequency ||
-        `${profile.days_per_week} days per week`,
-
-      split:
-        aiResponse.overview?.split ||
-        profile.preferred_split,
-
-      notes:
-        aiResponse.overview?.notes ||
-        "Follow the program consistently for best results.",
-    },
-
-    weeklySchedule: (aiResponse.weeklySchedule || []).map((day: any) => ({
-      day: day.day || "Day",
-
-      focus:
-        day.focus ||
-        "Full Body",
-
-      exercises: (day.exercises || []).map((ex: any) => ({
-        name:
-          ex.name ||
-          "Exercise",
-
-        sets:
-          ex.sets ||
-          3,
-
-        reps:
-          ex.reps ||
-          "8-12",
-
-        rest:
-          ex.rest ||
-          "60-90 sec",
-
-        rpe:
-          ex.rpe ||
-          7,
-
-        notes:
-          ex.notes,
-
-        alternatives:
-          ex.alternatives,
-      })),
-    })),
-
-    progression:
-      aiResponse.progression ||
-      "Increase weight by 2.5-5lbs when you can complete all sets with good form. Track your progress weekly.",
-  };
-
-  return plan;
-}
-
 function buildPrompt(profile: UserProfile): string {
-  const goalMap: Record<string, string> = {
-    bulk: "build muscle and gain size",
-    cut: "lose fat and maintain muscle",
-    recomp: "simultaneously lose fat and build muscle",
-    strength: "build maximum strength",
-    endurance: "improve cardiovascular endurance and stamina",
-  };
+  return `
+Create a personalized weekly gym training plan based on the following user profile.
 
-  const experienceMap: Record<string, string> = {
-    beginner: "beginner (0-1 years of training experience)",
-    intermediate: "intermediate (1-3 years of training experience)",
-    advanced: "advanced (3+ years of training experience)",
-  };
+USER PROFILE:
 
-  const equipmentMap: Record<string, string> = {
-    full_gym: "full gym access with all equipment",
-    home: "home gym with limited equipment",
-    dumbbells: "only dumbbells available",
-  };
+Goal: ${profile.goal}
+Experience: ${profile.experience}
+Days per week: ${profile.days_per_week}
+Session length: ${profile.session_length} minutes
+Equipment: ${profile.equipment}
+Injuries: ${profile.injuries || "None"}
+Preferred split: ${profile.preferred_split}
 
-  const splitMap: Record<string, string> = {
-    full_body: "full body workouts",
-    upper_lower: "upper/lower split",
-    ppl: "push/pull/legs split",
-    custom: "best split for their goals",
-  };
+REQUIREMENTS:
 
-  return `Create a personalized ${profile.days_per_week}-day per week training plan for someone with the following profile:
+1. Create exactly ${profile.days_per_week} training days.
 
-Goal: ${goalMap[profile.goal] || profile.goal}
-Experience Level: ${experienceMap[profile.experience] || profile.experience}
-Session Length: ${profile.session_length} minutes per session
-Equipment: ${equipmentMap[profile.equipment] || profile.equipment}
-Preferred Split: ${splitMap[profile.preferred_split] || profile.preferred_split}
-${profile.injuries ? `Injuries/Limitations: ${profile.injuries}` : ""}
+2. Each training day must contain between 4 and 6 exercises.
 
-Generate a complete training plan in JSON format with this exact structure:
+3. The plan must be appropriate for the user's:
+   - Goal
+   - Experience level
+   - Available equipment
+   - Number of training days
+   - Session length
+   - Injuries
+
+4. Follow the user's preferred split when possible.
+
+5. Include appropriate sets, reps, rest periods, and RPE.
+
+6. RPE should generally be between 6 and 9.
+
+7. Avoid exercises that could aggravate the user's listed injuries.
+
+8. Make the weekly schedule realistic and balanced.
+
+9. Include useful program notes explaining how the user should approach the overall program.
+
+10. Include a progression strategy explaining how the user should increase
+    weight, repetitions, or difficulty over time.
+
+11. Return ONLY valid JSON.
+    
+Use EXACTLY this JSON structure:
 
 {
   "overview": {
-    "goal": "brief description of the training goal",
-    "frequency": "X days per week",
-    "split": "training split name",
-    "notes": "important notes about the program (2-3 sentences)"
+    "goal": "string",
+    "frequency": "string",
+    "split": "string",
+    "notes": "string"
   },
+
   "weeklySchedule": [
     {
-      "day": "Monday",
-      "focus": "muscle group or focus area",
+      "day": "string",
+      "focus": "string",
       "exercises": [
         {
-          "name": "Exercise Name",
-          "sets": 4,
-          "reps": "6-8",
-          "rest": "2-3 min",
-          "rpe": 8,
-          "notes": "form cues or tips",
-          "alternatives": [
-            "Alternative 1",
-            "Alternative 2"
-          ]
+          "name": "string",
+          "sets": number,
+          "reps": "string",
+          "rest": "string",
+          "rpe": number,
+          "notes": "string"
         }
       ]
     }
   ],
-  "progression": "detailed progression strategy (2-3 sentences explaining how to progress)"
-}
 
-Requirements:
-
-- Create exactly ${profile.days_per_week} workout days.
-- Each workout must fit within ${profile.session_length} minutes.
-- Include 4-6 exercises per workout.
-- RPE must be between 6 and 9.
-- Include compound movements for beginners and intermediate lifters.
-- Advanced lifters can have more isolation exercises.
-- Match the preferred split: ${profile.preferred_split}.
-- ${
-    profile.injuries
-      ? `Avoid exercises that could aggravate: ${profile.injuries}.`
-      : ""
+  "progression": {
+    "method": "string",
+    "guidelines": [
+      "string"
+    ]
   }
-- Provide exercise alternatives where appropriate.
-- Make the program progressive.
-- Make the program appropriate for the user's experience level.
-- Do not create more workout days than requested.
-- Do not include explanations outside the JSON object.
+}
 
 IMPORTANT:
 
-Return ONLY a valid JSON object.
-
-Do NOT wrap the JSON in markdown.
-Do NOT use \`\`\`json.
-Do NOT write "Here is your plan".
-Do NOT include any text before or after the JSON.
+- "goal" should describe the user's training goal.
+- "frequency" should describe how often they train, for example "4 days per week".
+- "split" should describe the training split, for example "Upper / Lower".
+- "notes" should be a useful paragraph about the overall training program.
+- "method" should describe the progression method.
+- "guidelines" should contain multiple practical progression instructions.
+- Every exercise must have sets, reps, rest, RPE, and notes.
+- Do not use markdown.
+- Do not use code fences.
+- Do not write anything before or after the JSON.
+- The first character of your response must be {.
+- The last character of your response must be }.
 `;
+}
+function parseAIJson(content: string): any {
+  let cleaned = content.trim();
+
+  // Remove markdown code fences.
+  cleaned = cleaned
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  // First attempt: the response is already valid JSON.
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    // Continue with extraction below.
+  }
+
+  // Sometimes the model adds text before/after the JSON.
+  // Find the first { and the last }.
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    const jsonText = cleaned.slice(firstBrace, lastBrace + 1);
+
+    try {
+      return JSON.parse(jsonText);
+    } catch {
+      // Continue to the final error.
+    }
+  }
+
+  throw new Error("Unable to parse AI response as JSON");
+}
+
+function formatPlanResponse(
+  planData: any,
+  profile: UserProfile,
+): Omit<TrainingPlan, "id" | "userId" | "version" | "createdAt"> {
+  return {
+    overview: {
+      goal:
+        planData?.overview?.goal ||
+        profile.goal,
+
+      frequency:
+        planData?.overview?.frequency ||
+        `${profile.days_per_week} days per week`,
+
+      split:
+        planData?.overview?.split ||
+        profile.preferred_split,
+
+      notes:
+        planData?.overview?.notes ||
+        `This ${profile.days_per_week}-day training program is designed for your ${profile.goal} goal. Focus on maintaining good exercise technique, completing the prescribed repetitions, and recovering adequately between sessions.`,
+    },
+
+    weeklySchedule:
+      Array.isArray(planData?.weeklySchedule)
+        ? planData.weeklySchedule
+        : [],
+
+    progression: {
+      method:
+        planData?.progression?.method ||
+        "Progressive overload",
+
+      guidelines:
+        Array.isArray(planData?.progression?.guidelines)
+          ? planData.progression.guidelines
+          : [
+              "Increase weight gradually when you can complete all prescribed repetitions with good form.",
+              "Keep most working sets within the prescribed RPE range.",
+              "Prioritize proper technique over adding weight.",
+            ],
+    },
+  };
 }

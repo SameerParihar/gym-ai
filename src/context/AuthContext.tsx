@@ -102,13 +102,32 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function generatePlan() {
-    if (!neonUser) {
-      throw new Error("User must be authenticated to generate plan");
-    }
-
-    await api.generatePlan(neonUser.id);
-    await refreshData();
+  if (!neonUser) {
+    throw new Error(
+      "User must be authenticated to generate plan",
+    );
   }
+
+  const planData = await api.generatePlan(neonUser.id);
+
+  console.log("[AUTH] Generated plan:", planData);
+
+  if (!planData?.planJson) {
+    throw new Error(
+      "Backend generated the plan but did not return the plan data.",
+    );
+  }
+
+  setPlan({
+    id: planData.id,
+    userId: planData.userId,
+    overview: planData.planJson.overview,
+    weeklySchedule: planData.planJson.weeklySchedule,
+    progression: planData.planJson.progression,
+    version: planData.version,
+    createdAt: planData.createdAt,
+  });
+}
 
   return (
     <AuthContext.Provider

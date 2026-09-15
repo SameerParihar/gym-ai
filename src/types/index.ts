@@ -44,7 +44,10 @@ export interface TrainingPlan {
   userId: string;
   overview: PlanOverview;
   weeklySchedule: DaySchedule[];
-  progression: string;
+  progression: {
+  method: string;
+  guidelines: string[];
+};
   version: number;
   createdAt: string;
 }
